@@ -52,7 +52,11 @@ contract Truster is DSTest {
             TOKENS_IN_POOL,
             address(trusterLenderPool),
             address(dvt),
-            abi.encodeWithSignature("approve(address,uint256)", attacker, TOKENS_IN_POOL)
+            abi.encodeWithSignature(
+                "approve(address,uint256)",
+                attacker,
+                TOKENS_IN_POOL
+            )
         );
 
         dvt.transferFrom(address(trusterLenderPool), attacker, TOKENS_IN_POOL);

